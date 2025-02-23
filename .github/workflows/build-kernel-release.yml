@@ -24,8 +24,8 @@ on:
           - thin
           - none
         default: thin
-      build_a13_5_15:
-        description: 'Build Android 13 5.15 kernel?'
+      build_a12_5_10:
+        description: 'Build Android 12 5.10 kernel?'
         required: true
         type: boolean
         default: true
@@ -50,10 +50,10 @@ on:
         default: ""  # Default is empty, but can be filled in if 'Other' is selected
 
 jobs:
-  build-kernel-a13-5-15:
+  build-kernel-a12-5-10:
     uses: ./.github/workflows/build-kernel.yml
     secrets: inherit
-    if: ${{ inputs.build_a13_5_15 }}
+    if: ${{ inputs.build_a12_5_10 }}
     with:
       runner: ${{ inputs.runner }}
       lto_type: ${{ inputs.lto_type }}
@@ -63,7 +63,7 @@ jobs:
   trigger-release:
     runs-on: ubuntu-latest
     needs:
-        - build-kernel-a13-5-15
+        - build-kernel-a12-5-10
     if: ${{ inputs.make_release }}
     env:
       REPO_OWNER: WildPlusKernel
@@ -161,7 +161,7 @@ jobs:
           GITLAB_REPO="susfs4ksu"
 
           declare -A BRANCH_MAP=(
-            ["gki_android13_5_15"]="gki-android13-5.15"
+            ["gki_android12_5_10"]="gki-android12-5.10"
           )
 
           for var_name in "${!BRANCH_MAP[@]}"; do
@@ -189,7 +189,7 @@ jobs:
           echo "Commit Hashes & Links:" >> $GITHUB_ENV
           echo "KernelSU: [$KSU_REF]($KSU_URL)" >> $GITHUB_ENV
           echo "[SUSFS4KSU](https://gitlab.com/simonpunk/susfs4ksu):" >> $GITHUB_ENV
-          echo "gki-android13-5.15: [$COMMIT_HASH_gki_android13_5_15]($COMMIT_URL_gki_android13_5_15)" >> $GITHUB_ENV
+          echo "gki-android12-5.10: [$COMMIT_HASH_gki_android12_5_10]($COMMIT_URL_gki_android12_5_10)" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
           
       # Get the Latest Tag from GitHub
