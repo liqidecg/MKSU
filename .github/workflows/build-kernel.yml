@@ -17,15 +17,15 @@ on:
         type: string
   
 jobs:
-  build-kernel-a13-5-15-kernelsu-susfs:
+  build-kernel-a12-5-10-kernelsu-susfs:
     runs-on: ${{ inputs.runner }}
     strategy:
       matrix:
         include:
           - android_version: "android13"
-            kernel_version: "5.15"
-            sub_level: "94"
-            os_patch_level: "2023-05"
+            kernel_version: "5.10"
+            sub_level: "209"
+            os_patch_level: "2024-05"
 
     steps:
       - name: Maximize build space
