@@ -170,15 +170,12 @@ jobs:
             exit 1
           fi
       
-      - name: Add KernelSU
+      - name: Apply SUSFS Patches for KernelSU Variants
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
-
-          if [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            echo "Adding KernelSU MKSU..."
-            curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash $BRANCH
-          fi
+          
+          echo "Applying SUSFS patches..."
           
           # Copy SUSFS patches
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
@@ -190,7 +187,11 @@ jobs:
             cp ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
             cd ./KernelSU
             patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
-                        
+            
+            echo "Applying MKSU specific SUSFS patch..."
+            cp ../../kernel_patches/mksu_susfs_fix.patch ../KernelSU/
+            patch -p1 < mksu_susfs_fix.patch
+            
           else
             echo "Invalid KernelSU variant selected!"
             exit 1
