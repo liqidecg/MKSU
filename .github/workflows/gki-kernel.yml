@@ -18,12 +18,6 @@ on:
       os_patch_level:
         required: true
         type: string
-      runner:
-        required: true
-        type: string
-      lto_type:
-        required: true
-        type: string
       kernelsu_variant:
         required: true
         type: string
@@ -33,14 +27,20 @@ on:
       kernelsu_branch_other:
         required: false
         type: string
+      revision:
+        required: false
+        type: string
 
 jobs:
   build-kernel-kernelsu-susfs:
-    runs-on: ${{ inputs.runner }}
+    runs-on: ubuntu-22.04
+    env:
+      CCACHE_COMPILERCHECK: "%compiler% -dumpmachine; %compiler% -dumpversion"
+      CCACHE_NOHASHDIR: "true"
+      CCACHE_HARDLINK: "true"
 
     steps:
       - name: Maximize build space
-        if: ${{ inputs.runner == 'ubuntu-22.04' }}
         uses: easimon/maximize-build-space@master
         with:
           root-reserve-mb: 8192
@@ -50,9 +50,6 @@ jobs:
           remove-android: "true"
           remove-haskell: "true"
           remove-codeql: "true"
-
-      - name: Clean up workspace
-        run: rm -rf ${{ github.workspace }}/*
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -64,6 +61,26 @@ jobs:
 
           echo "CONFIG set to: $CONFIG"
 
+      # Install ccache
+      - name: Install ccache
+        run: sudo apt update && sudo apt install -y ccache
+
+      - name: Set up ccache
+        run: |
+          mkdir -p ~/.cache/bazel # Ensure the directory exists
+          ccache --version
+          ccache --max-size=2G
+          ccache --set-config=compression=true
+          echo "CCACHE_DIR=$HOME/.ccache" >> $GITHUB_ENV
+      
+      - name: Restore ccache from cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}-ccache-${{ github.sha }}
+          restore-keys: |
+            ${{ inputs.android_version }}-${{ inputs.kernel_version }}-${{ inputs.sub_level }}-ccache-
+      
       - name: Cache toolchain
         id: cache-toolchain
         uses: actions/cache@v4
@@ -119,7 +136,7 @@ jobs:
           echo "Using branch for SUSFS: $SUSFS_BRANCH"
 
           # Clone repositories using the branch names
-          git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "gki"
+          git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "gki-2.0"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
           git clone https://github.com/liqideqq/kernel_patches.git
 
@@ -170,6 +187,16 @@ jobs:
             exit 1
           fi
       
+      - name: Add KernelSU
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG"
+
+          if [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
+            echo "Adding KernelSU MKSU..."
+            curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash $BRANCH
+          fi
+          
       - name: Apply SUSFS Patches for KernelSU Variants
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -181,30 +208,28 @@ jobs:
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
+          cp ../../kernel_patches/mksu_susfs_fix.patch ../KernelSU/
 
-          if [ "${{ inputs.kernelsu_variant }}" == "Official" ]; then
-            echo "Applying SUSFS patches for Official KernelSU..."
-            cp ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
-            cd ./KernelSU
-            patch -p1 --forward < 10_enable_susfs_for_ksu.patch
-          elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
+          if [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "Applying SUSFS patches for MKSU..."
             cp ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
             cd ./KernelSU
             patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
-            
-            echo "Applying MKSU specific SUSFS patch..."
-            cp ../../kernel_patches/mksu_susfs_fix.patch ../KernelSU/
-            patch -p1 < mksu_susfs_fix.patch
-            
-          else
-            echo "Invalid KernelSU variant selected!"
-            exit 1
           fi
 
           # Change to common directory and apply common SUSFS patch
           cd ../common
           patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
+          cd ../KernelSU
+          patch -p1 < mksu_susfs_fix.patch
+            
+      - name: Apply New Hooks Patches
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/common"
+          # Apply additional patch
+          cp ../../kernel_patches/new_hooks.patch ./
+          patch -p1 -F 3 < new_hooks.patch
           
       - name: Apply Hide Stuff Patches
         run: |
@@ -252,12 +277,12 @@ jobs:
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
 
-      - name: Build the Kernel
+      - name: Config Kernel Name
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
 
-          sed -i '$s|echo "\$res"|echo "\$res-liqideqq"|' ./common/scripts/setlocalversion
+          sed -i '$s|echo "\$res"|echo "\$res-Wild+"|' ./common/scripts/setlocalversion
 
           # Run perl command to modify UTS_VERSION
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Apr 20 04:20:00 UTC 2024"}' ./common/scripts/mkcompile_h
@@ -265,16 +290,33 @@ jobs:
           echo "Building the kernel..."
           if [ -f "build/build.sh" ]; then
             sed -i 's/-dirty//' ./common/scripts/setlocalversion
-            LTO=${{ inputs.lto_type }} BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh
+            #LTO=${{ inputs.lto_type }} BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang"
           else
             rm -rf ./common/android/abi_gki_protected_exports_*
             sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
-            sed -i 's/^CONFIG_LOCALVERSION=.*/CONFIG_LOCALVERSION="-liqideqq"/' ./common/scripts/setlocalversion
-            tools/bazel build --config=fast --lto=${{ inputs.lto_type }} //common:kernel_aarch64_dist
+            sed -E -i '/^CONFIG_LOCALVERSION=/ s/(.*)"$/\1-Wild+"/' ./common/arch/arm64/configs/gki_defconfig
+            #tools/bazel build --config=fast --lto=${{ inputs.lto_type }} //common:kernel_aarch64_dist
           fi
 
+      - name: Build with retry
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 30
+          max_attempts: 3
+          command: |
+            set -e
+            set -x
+            cd "$CONFIG"
+            echo "Building the kernel..."
+            if [ -f "build/build.sh" ]; then
+              LTO=thin BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang" || exit 1
+            else
+              tools/bazel build --disk_cache=/home/runner/.cache/bazel --config=fast --lto=thin //common:kernel_aarch64_dist || exit 1
+            fi
+            ccache --show-stats
+            
       - name: Create Bootimgs Folder and Copy Images
-        if: ${{ inputs.android_version == 'android13' }}
+        if: ${{ inputs.android_version == 'android12' || inputs.android_version == 'android13' }}
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           mkdir bootimgs
@@ -284,6 +326,21 @@ jobs:
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./bootimgs
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./
+
+          # Create gzip of the Image file
+          gzip -n -k -f -9 ./Image > ./Image.gz
+
+      - name: Create Bootimgs Folder and Copy Images
+        if: ${{ inputs.android_version == 'android14' || inputs.android_version == 'android15' }}
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          mkdir bootimgs
+
+          echo "Creating bootimgs folder and copying images..."
+          cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image ./bootimgs
+          cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image.lz4 ./bootimgs
+          cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image ./
+          cp ./$CONFIG/bazel-bin/common/kernel_aarch64/Image.lz4 ./
 
           # Create gzip of the Image file
           gzip -n -k -f -9 ./Image > ./Image.gz
@@ -313,7 +370,57 @@ jobs:
           rm ./Image.gz
 
       - name: Run Boot Image ${{ inputs.android_version }} Build Script
-        if: ${{ inputs.android_version == 'android13' }}
+        if: ${{ inputs.android_version == 'android12' }}
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd bootimgs
+
+          GKI_URL=https://dl.google.com/android/gki/gki-certified-boot-android12-5.10-"${{ inputs.os_patch_level }}"_"${{ inputs.revision }}".zip
+          FALLBACK_URL=https://dl.google.com/android/gki/gki-certified-boot-android12-5.10-2023-01_r1.zip
+
+          # Check if the GKI URL is available
+          echo "Checking if GKI kernel URL is reachable: $GKI_URL"
+          status=$(curl -sL -w "%{http_code}" "$GKI_URL" -o /dev/null)
+
+          if [ "$status" = "200" ]; then
+              echo "[+] Downloading from GKI_URL"
+              curl -Lo gki-kernel.zip "$GKI_URL"
+          else
+              echo "[+] $GKI_URL not found, using $FALLBACK_URL"
+              curl -Lo gki-kernel.zip "$FALLBACK_URL"
+          fi
+
+          # Unzip the downloaded kernel and remove the zip
+          echo "Unzipping the downloaded kernel..."
+          unzip gki-kernel.zip && rm gki-kernel.zip
+
+          echo "Unpacking boot.img..."
+          FULL_PATH=$(pwd)/boot-5.10.img
+          echo "Unpacking using: $FULL_PATH"
+
+          echo "Running unpack_bootimg.py..."
+          $UNPACK_BOOTIMG --boot_img="$FULL_PATH"
+
+          echo "Building Image.gz"
+          gzip -n -k -f -9 ./Image > ./Image.gz
+
+          echo "Building boot.img"
+          $MKBOOTIMG --header_version 4 --kernel Image --output boot.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
+          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
+          cp ./boot.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot.img
+
+          echo "Building boot-gz.img"
+          $MKBOOTIMG --header_version 4 --kernel Image.gz --output boot-gz.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
+          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-gz.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
+          cp ./boot-gz.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-gz.img
+
+          echo "Building boot-lz4.img"
+          $MKBOOTIMG --header_version 4 --kernel Image.lz4 --output boot-lz4.img --ramdisk out/ramdisk --os_version 12.0.0 --os_patch_level "${{ inputs.os_patch_level }}"
+          $AVBTOOL add_hash_footer --partition_name boot --partition_size $((64 * 1024 * 1024)) --image boot-lz4.img --algorithm SHA256_RSA2048 --key $BOOT_SIGN_KEY_PATH
+          cp ./boot-lz4.img ../${{ inputs.android_version }}-${{ inputs.kernel_version }}.${{ inputs.sub_level }}-${{ inputs.os_patch_level }}-boot-lz4.img
+
+      - name: Run Boot Image ${{ inputs.android_version }} Build Script
+        if: ${{ inputs.android_version == 'android13' || inputs.android_version == 'android14' || inputs.android_version == 'android15' }}
         run: |
           cd bootimgs
 
