@@ -180,16 +180,8 @@ jobs:
             curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash $BRANCH
           fi
           
-      - name: Apply SUSFS Patches for KernelSU Variants
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG"
-          
-          echo "Applying SUSFS patches..."
-          
           # Copy SUSFS patches
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
-          cp ../kernel_patches/fix.patch ./KernelSU/
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
@@ -198,15 +190,18 @@ jobs:
             cp ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
             cd ./KernelSU
             patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
+                        
+          else
+            echo "Invalid KernelSU variant selected!"
+            exit 1
           fi
 
           # Change to common directory and apply common SUSFS patch
           cd ../common
           patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
-          
           echo "Applying MKSU specific SUSFS patch..."
-          cp ../../kernel_patches/mksu_susfs_fix.patch ../KernelSU/
-          patch -p1 < mksu_susfs_fix.patch
+          cp ../../kernel_patches/mksu_susfs.patch ../KernelSU/
+          patch -p1 < mksu_susfs.patch
           
       - name: Apply Hide Stuff Patches
         run: |
