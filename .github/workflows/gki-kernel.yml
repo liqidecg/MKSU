@@ -214,7 +214,7 @@ jobs:
             patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
             
             echo "Applying MKSU specific SUSFS patch..."
-            cp ../../kernel_patches/mksu_susfs.patch ../KernelSU/
+            cp ../../kernel_patches/mksu_susfs_fix.patch ../KernelSU/
             patch -p1 < mksu_susfs_fix.patch
             
           else
