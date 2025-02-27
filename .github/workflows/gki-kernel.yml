@@ -193,7 +193,7 @@ jobs:
           if [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "Adding KernelSU MKSU..."
             curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/main/kernel/setup.sh" | bash $BRANCH
-            elif [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
+          fi
           
       - name: Apply SUSFS Patches for KernelSU Variants
         run: |
