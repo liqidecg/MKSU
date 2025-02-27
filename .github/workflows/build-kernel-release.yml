@@ -77,7 +77,7 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Determine the branch for KernelSU-${{ inputs.kernelsu_variant }}
-        if: ${{ inputs.kernelsu_variant == 'MKSU' }}
+        if: ${{ inputs.kernelsu_branch == 'Dev' || inputs.kernelsu_variant == 'MKSU' }}
         run: |
           # Determine the branch based on user input
           if [[ "${{ inputs.kernelsu_variant }}" == "MKSU" ]]; then
@@ -164,7 +164,7 @@ jobs:
             fi
           done
 
-      - name: Append Commit Hashes & Links to `RELEASE_NOTES` & Append KernelSU Reference to `RELEASE_NOTES`
+      - name: Append Commit Hashes & Links to `RELEASE_NOTES` & Append KernelSU-Next Reference to `RELEASE_NOTES`
         run: |
           if [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
             echo "This is the MKSU variant"
@@ -177,7 +177,7 @@ jobs:
             echo "Unknown variant"
           fi
           
-      - name: Append Commit Hashes & Links to `RELEASE_NOTES` & Append KernelSU Reference to `RELEASE_NOTES`
+      - name: Append Commit Hashes & Links to `RELEASE_NOTES` & Append KernelSU-Next Reference to `RELEASE_NOTES`
         run: |
           echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
           echo "$RELEASE_NOTES" >> $GITHUB_ENV
