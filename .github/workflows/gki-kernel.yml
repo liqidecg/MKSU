@@ -215,9 +215,7 @@ jobs:
             
             echo "Applying MKSU specific SUSFS patch..."
             cp ../../kernel_patches/mksu_susfs.patch ../KernelSU/
-            patch -p1 < mksu_susfs.patch
-            cp ../../kernel_patches/fix.patch ./KernelSU/
-            patch -p1 < fix.patch
+            patch -p1 < mksu_susfs_fix.patch
             
           else
             echo "Invalid KernelSU variant selected!"
