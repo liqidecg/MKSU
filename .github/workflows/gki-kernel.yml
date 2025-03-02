@@ -206,8 +206,7 @@ jobs:
           
           # Copy SUSFS patches
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
-          cp ../kernel_patches/mksu_susfs_fix.patch ./KernelSU/
-          cp ../kernel_patches/mksu_susfs_vfs_fix.sh ./KernelSU/
+          cp ../kernel_patches/mksu_susfs_fix.patch ./KernelSU
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
@@ -225,16 +224,6 @@ jobs:
           echo "Applying MKSU specific SUSFS patch..."
           cd ../KernelSU
           patch -p1 < mksu_susfs_fix.patch || true
-          chmod 777 mksu_susfs_vfs_fix.sh
-          ./mksu_susfs_vfs_fix.sh
-
-      - name: Apply New Hooks Patches
-        run: |
-          echo "Changing to configuration directory: $CONFIG..."
-          cd "$CONFIG/common"
-          # Apply additional patch
-          cp ../../kernel_patches/new_hooks.patch ./
-          patch -p1 -F 3 < new_hooks.patch
             
       - name: Apply Hide Stuff Patches
         run: |
