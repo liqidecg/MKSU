@@ -7,6 +7,11 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
+      build_a13_515:
+        description: 'Build a13 5.15?'
+        required: true
+        type: boolean
+        default: true
       make_release:
         description: 'Do you want to create a release?'
         required: true
@@ -17,8 +22,8 @@ on:
         required: true
         type: choice
         options:
-          - MKSU
-        default: MKSU
+          - SukiSU
+        default: SukiSU
       kernelsu_branch:
         description: "Choose ksu branch"
         required: true
@@ -27,7 +32,7 @@ on:
           - Stable
           - Dev
           - Other
-        default: Stable
+        default: Dev
       kernelsu_branch_other:
         description: "If 'Other' is selected, specify your custom branch"
         required: false
@@ -36,9 +41,11 @@ on:
 
 jobs:
   build-kernel-a13-5-15:
+    if: ${{ inputs.build_a13_515 }}
     uses: ./.github/workflows/kernel-a13-5.15.yml
     secrets: inherit
     with:
+      make_release: ${{ inputs.make_release }}
       kernelsu_variant: ${{ inputs.kernelsu_variant }}
       kernelsu_branch: ${{ inputs.kernelsu_branch }}
       kernelsu_branch_other: ${{ inputs.kernelsu_branch_other }}
@@ -51,7 +58,7 @@ jobs:
     env:
       REPO_OWNER: WildPlusKernel
       REPO_NAME: GKI_KernelSU_SUSFS
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GITHUB_TOKEN: ${{ secrets.MY_PAT_TOKEN }}
       RELEASE_NAME: "*TEST BUILD* GKI Kernels With KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} & SUSFS v1.5.5 *TEST BUILD*"
       RELEASE_NOTES: |
         This release contains KernelSU-${{ inputs.kernelsu_variant }} ${{ inputs.kernelsu_branch }} and SUSFS v1.5.5
@@ -62,7 +69,12 @@ jobs:
         -> Manual Hooks for Better Hiding
         -> Wireguard Support
         -> Simple Maphide for LineageOS Detections
+        -> Futile Maphide for jit-zygote-cache Detections
         -> Magic Mount Support
+
+        Notes:
+        -> SUS SU Mode 2 will show as disabled or not compatble due to non-kprobe hooks and is not needed anymore!
+        -> Kernel Flasher is broken with latest susfs, try https://github.com/libxzr/HorizonKernelFlasher!
 
         Module: 
         -> https://github.com/sidex15/ksu_module_susfs
@@ -73,10 +85,10 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Determine the branch for KernelSU-${{ inputs.kernelsu_variant }}
-        if: ${{ inputs.kernelsu_branch == 'Dev' || inputs.kernelsu_variant == 'MKSU' }}
+        if: ${{ inputs.kernelsu_branch == 'Dev' || inputs.kernelsu_variant == 'SukiSU' }}
         run: |
           # Determine the branch based on user input
-          if [[ "${{ inputs.kernelsu_variant }}" == "MKSU" ]]; then
+          if [[ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]]; then
             BRANCH="main"
           elif [[ "${{ inputs.kernelsu_branch }}" == "Other" && -n "${{ inputs.kernelsu_branch_other }}" ]]; then
             BRANCH="${{ inputs.kernelsu_branch_other }}"
@@ -90,15 +102,15 @@ jobs:
 
       - name: Get commit hash or tag and generate URL for KernelSU-${{ inputs.kernelsu_variant }}
         run: |
-          if [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            echo "This is the MKSU variant"
-            REPO_URL="https://github.com/5ec1cff/KernelSU.git"
-            REPO_URL2="5ec1cff/KernelSU"
+          if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
+            echo "This is the SukiSU variant"
+            REPO_URL="https://github.com/ShirkNeko/KernelSU.git"
+            REPO_URL2="ShirkNeko/KernelSU"
           else
             echo "Unknown variant"
           fi
           
-          if [[ "${{ inputs.kernelsu_branch }}" == "Stable" && "${{ inputs.kernelsu_variant }}" != "MKSU" ]]; then
+          if [[ "${{ inputs.kernelsu_branch }}" == "Stable" && "${{ inputs.kernelsu_variant }}" != "SukiSU" ]]; then
             # Fetch the latest tag
             TAG=$(git ls-remote --tags --sort=-v:refname $REPO_URL | grep -o 'refs/tags/.*' | cut -d'/' -f3 | head -n1)
             if [[ -z "$TAG" ]]; then
@@ -108,7 +120,7 @@ jobs:
             KSU_REF=$TAG
             KSU_URL="https://github.com/$REPO_URL2/releases/tag/$TAG"
 
-          elif [[ "${{ inputs.kernelsu_branch }}" == "Dev" || "${{ inputs.kernelsu_variant }}" == "MKSU" ]]; then
+          elif [[ "${{ inputs.kernelsu_branch }}" == "Dev" || "${{ inputs.kernelsu_variant }}" == "SukiSU" ]]; then
             # Fetch the latest commit from "next" branch
             COMMIT_HASH=$(git ls-remote $REPO_URL refs/heads/$KSU_BRANCH | awk '{ print $1 }')
             if [[ -z "$COMMIT_HASH" ]]; then
@@ -162,12 +174,12 @@ jobs:
 
       - name: Append Commit Hashes & Links to `RELEASE_NOTES` & Append KernelSU-Next Reference to `RELEASE_NOTES`
         run: |
-          if [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            echo "This is the MKSU variant"
+          if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
+            echo "This is the SukiSU variant"
             echo "RELEASE_NOTES<<EOF" >> $GITHUB_ENV
             echo "$RELEASE_NOTES" >> $GITHUB_ENV
-            echo "MKSU Manager:" >> $GITHUB_ENV
-            echo "-> https://github.com/5ec1cff/KernelSU" >> $GITHUB_ENV
+            echo "SukiSU Manager:" >> $GITHUB_ENV
+            echo "-> https://github.com/ShirkNeko/KernelSU" >> $GITHUB_ENV
             echo "EOF" >> $GITHUB_ENV
           else
             echo "Unknown variant"
@@ -191,7 +203,7 @@ jobs:
       # Get the Latest Tag from GitHub
       - name: Generate and Create New Tag
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.MY_PAT_TOKEN }}
         run: |
             # Fetch the latest tag from GitHub (this is the latest tag based on the GitHub API)
             LATEST_TAG=$(gh api repos/$REPO_OWNER/$REPO_NAME/tags --jq '.[0].name')
@@ -200,23 +212,23 @@ jobs:
             fi
             
             NEW_TAG=$(echo "$LATEST_TAG" | awk -F'-r' '{suffix=$2; if (!suffix) suffix=0; suffix++; printf "%s-r%d", $1, suffix}')
-    
+            
             # Output the new tag to be used
             echo "New tag: $NEW_TAG"
-    
+            
             # Set the new tag as an environment variable to be used in later steps
             echo "NEW_TAG=${NEW_TAG}" >> $GITHUB_ENV
-
+            
             # Create the tag in the repository
             git tag $NEW_TAG
             git push --tags
-            
+
       # Download Artifacts for A12 (Only if A12 Build is successful or input is true or empty)
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
           path: ./downloaded-artifacts
-
+          
       # Create GitHub Release and upload files if make_release is true
       - name: Create GitHub Release
         uses: actions/create-release@v1
@@ -245,17 +257,3 @@ jobs:
         run: |
           echo "GitHub release created with the following files:"
           ls ./downloaded-artifacts/**/*
-
-      - name: send telegram message on push
-        env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          TELEGRAM_MESSAGE_THREAD_ID: ${{ secrets.TELEGRAM_MESSAGE_THREAD_ID }}
-        run: |
-          curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-            -d "chat_id=$TELEGRAM_CHAT_ID" \
-            -d "message_thread_id=$TELEGRAM_MESSAGE_THREAD_ID" \
-            -d "text=Latest release: 
-            https://github.com/WildPlusKernel/GKI_KernelSU_SUSFS/releases/tag/${{ env.NEW_TAG }}
-            
-            ${{ env.RELEASE_NOTES }}"
