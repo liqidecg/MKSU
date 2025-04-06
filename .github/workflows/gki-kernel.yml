@@ -6,6 +6,10 @@ permissions:
 on:
   workflow_call: # This allows this workflow to be called from another workflow
     inputs:
+      make_release:
+        required: true
+        type: boolean
+        default: true
       android_version:
         required: true
         type: string
@@ -138,7 +142,7 @@ jobs:
           # Clone repositories using the branch names
           git clone https://github.com/WildPlusKernel/AnyKernel3.git -b "gki-2.0"
           git clone https://gitlab.com/simonpunk/susfs4ksu.git -b "$SUSFS_BRANCH"
-          git clone https://github.com/liqideqq/kernel_patches.git
+          git clone https://github.com/ShirkNeko/SukiSU_patch.git
 
       - name: Set CONFIG Environment Variable
         run: |
@@ -174,12 +178,27 @@ jobs:
           $REPO --version
           $REPO --trace sync -c -j$(nproc --all) --no-tags --fail-fast
 
+      - name: Copy file
+        run: |
+          cp -r $CONFIG source-clean-$CONFIG
+
+      - name: Upload artifact
+        if: ${{ inputs.make_release == false }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-clean-${{ env.CONFIG }}
+          path: source-clean-${{ env.CONFIG }}
+
+      - name: Remove file
+        run: |
+          rm -rf source-clean-$CONFIG
+
       - name: Determine the branch for KernelSU
         run: |
           if [[ "${{ inputs.kernelsu_branch }}" == "Stable" ]]; then
               echo "BRANCH=-" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Dev" && ( "${{ inputs.kernelsu_variant }}" == "SukiSU" ) ]]; then
-              echo "BRANCH=-s main" >> $GITHUB_ENV
+              echo "BRANCH=-s susfs-dev" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Other" && -n "${{ inputs.kernelsu_branch_other }}" ]]; then
             echo "BRANCH=-s ${{ inputs.kernelsu_branch_other }}" >> $GITHUB_ENV
           else
@@ -191,7 +210,6 @@ jobs:
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
-
           if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
             echo "Adding KernelSU SukiSU..."
             curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash $BRANCH
@@ -213,6 +231,7 @@ jobs:
             echo "Applying SUSFS patches for SukiSU..."
              cd ./KernelSU
             
+            
             echo "Applying SukiSU specific SUSFS patch..."
           else
             echo "Invalid KernelSU variant selected!"
@@ -222,7 +241,7 @@ jobs:
           # Change to common directory and apply common SUSFS patch
           cd ../common
           patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
-          
+
       - name: Apply New Hooks Patches
         run: |
           echo "Changing to configuration directory: $CONFIG..."
@@ -233,13 +252,13 @@ jobs:
             cp ../../SukiSU_patch/hooks/new_hooks.patch ./
             patch -p1 -F 3 < new_hooks.patch
           fi
-            
+
       - name: Apply Hide Stuff Patches
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG/common"
           # Apply additional patch
-          cp ../../kernel_patches/69_hide_stuff.patch ./
+          cp ../../SukiSU_patch/69_hide_stuff.patch ./
           patch -p1 -F 3 < 69_hide_stuff.patch
             
       - name: Add SUSFS Configuration Settings
@@ -275,13 +294,13 @@ jobs:
 
           # Remove check_defconfig
           sed -i 's/check_defconfig//' ./common/build.config.gki
-
+       
       - name: Config Kernel Name
         run: |
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
 
-          sed -i '$s|echo "\$res"|echo "\$res-liqideqq"|' ./common/scripts/setlocalversion
+          sed -i '$s|echo "\$res"|echo "\$res"|' ./common/scripts/setlocalversion
 
           # Run perl command to modify UTS_VERSION
           perl -pi -e 's{UTS_VERSION="\$\(echo \$UTS_VERSION \$CONFIG_FLAGS \$TIMESTAMP \| cut -b -\$UTS_LEN\)"}{UTS_VERSION="#1 SMP PREEMPT Sat Apr 20 04:20:00 UTC 2024"}' ./common/scripts/mkcompile_h
@@ -289,19 +308,33 @@ jobs:
           echo "Building the kernel..."
           if [ -f "build/build.sh" ]; then
             sed -i 's/-dirty//' ./common/scripts/setlocalversion
-            #LTO=${{ inputs.lto_type }} BUILD_CONFIG=common/build.config.gki.aarch64 build/build.sh CC="/usr/bin/ccache clang"
           else
             rm -rf ./common/android/abi_gki_protected_exports_*
             sed -i "/stable_scmversion_cmd/s/-maybe-dirty//g" ./build/kernel/kleaf/impl/stamp.bzl
             sed -E -i '/^CONFIG_LOCALVERSION=/ s/(.*)"$/\1-liqideqq"/' ./common/arch/arm64/configs/gki_defconfig
-            #tools/bazel build --config=fast --lto=${{ inputs.lto_type }} //common:kernel_aarch64_dist
           fi
+
+      - name: Copy file
+        run: |
+          cp -r $CONFIG source-patched-$CONFIG
+
+      - name: Upload artifact
+        if: ${{ inputs.make_release == false }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-patched-${{ env.CONFIG }}
+          path: source-patched-${{ env.CONFIG }}
+
+      - name: Remove file
+        run: |
+          rm -rf source-patched-$CONFIG
 
       - name: Build with retry
         uses: nick-fields/retry@v3
         with:
           timeout_minutes: 30
           max_attempts: 3
+          retry_on: timeout
           command: |
             set -e
             set -x
@@ -325,7 +358,7 @@ jobs:
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./bootimgs
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image ./
           cp ./$CONFIG/out/${{ inputs.android_version }}-${{ inputs.kernel_version }}/dist/Image.lz4 ./
-
+          
           # Create gzip of the Image file
           gzip -n -k -f -9 ./Image > ./Image.gz
 
