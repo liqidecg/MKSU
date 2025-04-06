@@ -178,7 +178,7 @@ jobs:
         run: |
           if [[ "${{ inputs.kernelsu_branch }}" == "Stable" ]]; then
               echo "BRANCH=-" >> $GITHUB_ENV
-          elif [[ "${{ inputs.kernelsu_branch }}" == "Dev" && ( "${{ inputs.kernelsu_variant }}" == "MKSU" ) ]]; then
+          elif [[ "${{ inputs.kernelsu_branch }}" == "Dev" && ( "${{ inputs.kernelsu_variant }}" == "SukiSU" ) ]]; then
               echo "BRANCH=-s main" >> $GITHUB_ENV
           elif [[ "${{ inputs.kernelsu_branch }}" == "Other" && -n "${{ inputs.kernelsu_branch_other }}" ]]; then
             echo "BRANCH=-s ${{ inputs.kernelsu_branch_other }}" >> $GITHUB_ENV
@@ -192,9 +192,9 @@ jobs:
           echo "Changing to configuration directory: $CONFIG..."
           cd "$CONFIG"
 
-          if [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            echo "Adding KernelSU MKSU..."
-            curl -LSs "https://raw.githubusercontent.com/5ec1cff/KernelSU/refs/heads/main/kernel/setup.sh" | bash $BRANCH
+          if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
+            echo "Adding KernelSU SukiSU..."
+            curl -LSs "https://raw.githubusercontent.com/ShirkNeko/SukiSU-Ultra/main/kernel/setup.sh" | bash $BRANCH
           fi
           
       - name: Apply SUSFS Patches for KernelSU Variants
@@ -206,24 +206,33 @@ jobs:
           
           # Copy SUSFS patches
           cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch ./common/
-          cp ../kernel_patches/mksu_susfs_fix.patch ./KernelSU
           cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
           cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
-          if [ "${{ inputs.kernelsu_variant }}" == "MKSU" ]; then
-            echo "Applying SUSFS patches for MKSU..."
-            cp ../susfs4ksu/kernel_patches/KernelSU/10_enable_susfs_for_ksu.patch ./KernelSU/
-            cd ./KernelSU
-            patch -p1 --forward < 10_enable_susfs_for_ksu.patch || true
+          if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
+            echo "Applying SUSFS patches for SukiSU..."
+             cd ./KernelSU
+            
+            echo "Applying SukiSU specific SUSFS patch..."
+          else
+            echo "Invalid KernelSU variant selected!"
+            exit 1
           fi
 
           # Change to common directory and apply common SUSFS patch
           cd ../common
           patch -p1 < 50_add_susfs_in_gki-${{ inputs.android_version }}-${{ inputs.kernel_version }}.patch || true
-          
-          echo "Applying MKSU specific SUSFS patch..."
-          cd ../KernelSU
-          patch -p1 < mksu_susfs_fix.patch || true
+
+      - name: Apply New Hooks Patches
+        run: |
+          echo "Changing to configuration directory: $CONFIG..."
+          cd "$CONFIG/common"
+
+          if [ "${{ inputs.kernelsu_variant }}" == "SukiSU" ]; then
+            echo "Applying hooks for SukiSU..."
+            cp ../../SukiSU_patch/hooks/new_hooks.patch ./
+            patch -p1 -F 3 < new_hooks.patch
+          fi
             
       - name: Apply Hide Stuff Patches
         run: |
@@ -242,7 +251,8 @@ jobs:
 
           # Add KSU configuration settings
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_HOOK=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KPM=y" >> ./common/arch/arm64/configs/gki_defconfig
+          echo "CONFIG_KSU_VFS=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_WITH_KPROBES=n" >> ./common/arch/arm64/configs/gki_defconfig
 
           # Add SUSFS configuration settings
